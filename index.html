@@ -13,8 +13,7 @@
   button{cursor:pointer}
   .primary{background:#2563eb;color:#fff;border-color:#2563eb}
   .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-  .legend i{width:14px;height:14px;border-radius:3px;display:inline-block;margin-right:6px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
   .cell{padding:12px;border:1px solid #e5e7eb;border-radius:10px;font-weight:600;cursor:pointer}
   .title{font-weight:600}
   .muted{color:#6b7280;font-size:12px}
@@ -26,32 +25,34 @@
 
 <script>
 const APP_OPT = 'CHESSBOARD_TITLE_STAGE_V1';
+const DEFAULT_ENTITY_TYPE_ID = 1038; // ваш СПА
 
-// палитра по ключевым словам стадии
+// Правила раскраски по названию стадии (можно дополнять)
 const RULES = [
-  {key:/свобод/i, color:'#36b37e', label:'Свободно'},
-  {key:/заброн|брон/i, color:'#f5c542', label:'Забронировано'},
-  {key:/аренд/i, color:'#60a5fa', label:'В аренде'},
-  {key:/ремонт/i, color:'#a78bfa', label:'Ремонт'},
-  {key:/после/i,  color:'#93c5fd', label:'После ремонта'},
-  {key:/заверш/i,color:'#9ca3af', label:'Завершено'}
+  {key:/свобод/i,         color:'#36b37e', label:'Свободно'},
+  {key:/заброн|брон/i,    color:'#f5c542', label:'Забронировано'},
+  {key:/в аренде|аренд/i, color:'#60a5fa', label:'В аренде'},
+  {key:/космет/i,         color:'#f59e0b', label:'Косметический ремонт'},
+  {key:/капитал/i,        color:'#a78bfa', label:'Капитальный ремонт'},
+  {key:/после/i,          color:'#93c5fd', label:'После ремонта'},
+  {key:/заверш|закрыт/i,  color:'#9ca3af', label:'Завершено'}
 ];
 const FALLBACK_COLOR = '#d1d5db';
 
 BX24.init(async () => {
   const root = document.getElementById('root');
-  const cfg = await loadCfg();
-  if(!cfg.entityTypeId){ return renderSetup(root, cfg); }
+  const saved = await loadCfg();
+  const cfg = { entityTypeId: saved.entityTypeId || DEFAULT_ENTITY_TYPE_ID };
+  if(!cfg.entityTypeId) { return renderSetup(root, cfg); }
   renderBoard(root, cfg);
 });
 
-// ---------- НАСТРОЙКА ----------
+// ---------- НАСТРОЙКА (если захотите поменять ID) ----------
 function renderSetup(root, cfg){
   root.innerHTML='';
   const card = el('div',{class:'card'});
   card.appendChild(el('h2',{},['Настройка шахматки']));
-  const eid = el('input',{id:'eid', placeholder:'например 176', value: cfg.entityTypeId||''});
-  card.appendChild(row('Entity Type ID (СПА):', eid));
+  const eid = el('input',{id:'eid', placeholder:'например 1038', value: cfg.entityTypeId||''});
   const save = el('button',{class:'primary'},['Сохранить']);
   save.onclick = async () => {
     const entityTypeId = Number(document.getElementById('eid').value||0);
@@ -59,6 +60,7 @@ function renderSetup(root, cfg){
     await setCfg({entityTypeId});
     location.reload();
   };
+  card.appendChild(row('Entity Type ID (СПА):', eid));
   card.appendChild(el('div',{style:'margin-top:8px'},[save]));
   card.appendChild(el('div',{class:'muted',style:'margin-top:8px'},[
     'ID можно посмотреть в адресе карточки: /crm/type/{ID}/details/123/'
@@ -66,11 +68,11 @@ function renderSetup(root, cfg){
   root.appendChild(card);
 }
 
-// ---------- ДОСКА ----------
+// ---------- ОСНОВНОЙ ЭКРАН ----------
 async function renderBoard(root, cfg){
   root.innerHTML='';
 
-  // получим стадии для категории 0 (или первой доступной)
+  // категории и стадии
   const categories = await api('crm.category.list', {entityTypeId: cfg.entityTypeId});
   const catId = (categories.categories?.[0]?.id) ?? 0;
   const stagesRes = await api('crm.category.stage.list', {entityTypeId: cfg.entityTypeId, categoryId: catId});
@@ -78,6 +80,7 @@ async function renderBoard(root, cfg){
   const stageMap = {};
   stages.forEach(s => stageMap[s.statusId] = s.name || s.statusId);
 
+  // тулбар
   const tools = el('div',{class:'toolbar'});
   const btnList = el('button',{},['Открыть базу (список)']);
   btnList.onclick = () => BX24.openPath(`/crm/type/${cfg.entityTypeId}/list/`);
@@ -88,12 +91,13 @@ async function renderBoard(root, cfg){
   tools.append(btnList, q, stSel);
   root.appendChild(tools);
 
+  // доска
   const boardCard = el('div',{class:'card'});
   const grid = el('div',{class:'grid', id:'grid'},['Загрузка…']);
   boardCard.appendChild(grid);
   root.appendChild(boardCard);
 
-  // загрузим элементы (только то, что нужно)
+  // данные
   const items = await loadAll(cfg.entityTypeId, ['id','title','stageId']);
 
   const state = {q:'', st:''};
