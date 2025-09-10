@@ -6,7 +6,7 @@
   "vendor": { "name": "Ваша компания" },
   "placement": {
     "DEFAULT": {
-      "handler": "https://ROt10MAN.github.io/Shah/index.html",
+      "handler": "https://rot10man.github.io/Shah/index.html",
       "title": "Шахматка объектов"
     }
   },
