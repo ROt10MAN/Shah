@@ -1,17 +1,16 @@
 {
   "code": "chessboard-properties",
   "name": "Шахматка объектов",
-  "description": "Простая шахматка для отображения объектов недвижимости в CRM Bitrix24",
-  "version": "1.0.0",
-  "vendor": {
-    "name": "Моя компания"
-  },
+  "description": "Простая шахматка: сетка лотов, клик открывает карточку объекта.",
+  "version": "1.1.0",
+  "vendor": { "name": "Ваша компания" },
   "placement": {
     "DEFAULT": {
-      "handler": "https://ROt10MAN.github.io/index.html",
+      "handler": "https://ROt10MAN.github.io/Shah/index.html",
       "title": "Шахматка объектов"
     }
   },
   "auth": "Y",
   "scope": ["crm", "user", "placement", "crm.userfield"]
 }
+
