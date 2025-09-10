@@ -1,76 +1,161 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Шахматка объектов</title>
-  <style>
-    body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f7f8fa;color:#111827}
-    .wrap{padding:14px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px}
-    .cell{padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-weight:600;cursor:pointer;text-align:center}
-  </style>
-  <script src="https://api.bitrix24.com/api/v1/"></script>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Шахматка объектов</title>
+<style>
+  body{margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f7f8fa;color:#111827}
+  .wrap{padding:14px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.04);padding:12px;margin-bottom:12px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select,button{padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}
+  button{cursor:pointer}
+  .primary{background:#2563eb;color:#fff;border-color:#2563eb}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .legend i{width:14px;height:14px;border-radius:3px;display:inline-block;margin-right:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+  .cell{padding:12px;border:1px solid #e5e7eb;border-radius:10px;font-weight:600;cursor:pointer}
+  .title{font-weight:600}
+  .muted{color:#6b7280;font-size:12px}
+</style>
+<script src="https://api.bitrix24.com/api/v1/"></script>
 </head>
 <body>
-<div class="wrap">
-  <h2>Шахматка объектов</h2>
-  <div id="board">Загрузка…</div>
-</div>
+<div class="wrap" id="root">Загрузка…</div>
 
 <script>
-  // === НАСТРОЙКИ ===
-  const ENTITY_TYPE_ID = 176; // замените на ID вашего СПА
-  const F = {
-    UNIT: 'ufCrmUnit',     // поле с номером лота
-    STATUS: 'ufCrmStatus'  // поле со статусом
+const APP_OPT = 'CHESSBOARD_TITLE_STAGE_V1';
+
+// палитра по ключевым словам стадии
+const RULES = [
+  {key:/свобод/i, color:'#36b37e', label:'Свободно'},
+  {key:/заброн|брон/i, color:'#f5c542', label:'Забронировано'},
+  {key:/аренд/i, color:'#60a5fa', label:'В аренде'},
+  {key:/ремонт/i, color:'#a78bfa', label:'Ремонт'},
+  {key:/после/i,  color:'#93c5fd', label:'После ремонта'},
+  {key:/заверш/i,color:'#9ca3af', label:'Завершено'}
+];
+const FALLBACK_COLOR = '#d1d5db';
+
+BX24.init(async () => {
+  const root = document.getElementById('root');
+  const cfg = await loadCfg();
+  if(!cfg.entityTypeId){ return renderSetup(root, cfg); }
+  renderBoard(root, cfg);
+});
+
+// ---------- НАСТРОЙКА ----------
+function renderSetup(root, cfg){
+  root.innerHTML='';
+  const card = el('div',{class:'card'});
+  card.appendChild(el('h2',{},['Настройка шахматки']));
+  const eid = el('input',{id:'eid', placeholder:'например 176', value: cfg.entityTypeId||''});
+  card.appendChild(row('Entity Type ID (СПА):', eid));
+  const save = el('button',{class:'primary'},['Сохранить']);
+  save.onclick = async () => {
+    const entityTypeId = Number(document.getElementById('eid').value||0);
+    if(!entityTypeId) return alert('Укажите entityTypeId');
+    await setCfg({entityTypeId});
+    location.reload();
   };
+  card.appendChild(el('div',{style:'margin-top:8px'},[save]));
+  card.appendChild(el('div',{class:'muted',style:'margin-top:8px'},[
+    'ID можно посмотреть в адресе карточки: /crm/type/{ID}/details/123/'
+  ]));
+  root.appendChild(card);
+}
 
-  const STATUS_COLOR = {
-    free: '#36b37e',   // Свободно
-    hold: '#f5c542',   // Бронь
-    sold: '#a0aec0',   // Продано
-    coming: '#60a5fa'  // Скоро
-  };
+// ---------- ДОСКА ----------
+async function renderBoard(root, cfg){
+  root.innerHTML='';
 
-  BX24.init(async () => {
-    const select = ['id','title',F.UNIT,F.STATUS];
-    const items = await loadAll(ENTITY_TYPE_ID, select);
-    const board = document.getElementById('board');
-    board.innerHTML = '';
+  // получим стадии для категории 0 (или первой доступной)
+  const categories = await api('crm.category.list', {entityTypeId: cfg.entityTypeId});
+  const catId = (categories.categories?.[0]?.id) ?? 0;
+  const stagesRes = await api('crm.category.stage.list', {entityTypeId: cfg.entityTypeId, categoryId: catId});
+  const stages = stagesRes.stages || [];
+  const stageMap = {};
+  stages.forEach(s => stageMap[s.statusId] = s.name || s.statusId);
 
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    items.forEach(i => {
-      const unit = i[F.UNIT] || '—';
-      const status = i[F.STATUS] || 'free';
-      const color = STATUS_COLOR[status] || '#d1d5db';
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      cell.style.background = color;
-      cell.textContent = unit;
-      cell.title = Статус: ${status};
-      cell.onclick = () => BX24.openPath(/crm/type/${ENTITY_TYPE_ID}/details/${i.id}/);
-      grid.appendChild(cell);
-    });
-    board.appendChild(grid);
-  });
+  const tools = el('div',{class:'toolbar'});
+  const btnList = el('button',{},['Открыть базу (список)']);
+  btnList.onclick = () => BX24.openPath(`/crm/type/${cfg.entityTypeId}/list/`);
+  const q = el('input',{id:'q',placeholder:'Поиск по названию'});
+  const stSel = el('select',{id:'st'});
+  stSel.appendChild(opt('', 'Все стадии'));
+  stages.forEach(s => stSel.appendChild(opt(s.statusId, s.name)));
+  tools.append(btnList, q, stSel);
+  root.appendChild(tools);
 
-  async function loadAll(entityTypeId, select){
-    let start = 0, out = [];
-    do{
-      const data = await api('crm.item.list', { entityTypeId, select, start, order:{id:'asc'} });
-      const part = data.items || data || [];
-      out = out.concat(part);
-      start = data.next || 0;
-    } while (start > 0);
-    return out;
+  const boardCard = el('div',{class:'card'});
+  const grid = el('div',{class:'grid', id:'grid'},['Загрузка…']);
+  boardCard.appendChild(grid);
+  root.appendChild(boardCard);
+
+  // загрузим элементы (только то, что нужно)
+  const items = await loadAll(cfg.entityTypeId, ['id','title','stageId']);
+
+  const state = {q:'', st:''};
+  q.oninput = () => { state.q = (q.value||'').toLowerCase(); draw(); };
+  stSel.onchange = () => { state.st = stSel.value; draw(); };
+  draw();
+
+  function draw(){
+    grid.innerHTML='';
+    let arr = items.map(i => ({
+      id: i.id,
+      title: i.title || '',
+      stageId: i.stageId || ''
+    }));
+    if(state.q) arr = arr.filter(x => x.title.toLowerCase().includes(state.q));
+    if(state.st) arr = arr.filter(x => x.stageId === state.st);
+    if(!arr.length){ grid.textContent = 'Ничего не найдено'; return; }
+    arr.forEach(x => grid.appendChild(cell(x)));
   }
-  function api(method, params){
-    return new Promise((resolve, reject)=>{
-      BX24.callMethod(method, params, res => res.error() ? reject(res.error()) : resolve(res.data()));
-    });
+
+  function cell(x){
+    const stageName = stageMap[x.stageId] || '';
+    const color = colorByStage(stageName);
+    const c = el('div',{class:'cell',style:`background:${color}`},[
+      el('div',{class:'title'},[x.title || `#${x.id}`]),
+      el('div',{class:'muted'},[stageName || x.stageId || ''])
+    ]);
+    c.onclick = () => BX24.openPath(`/crm/type/${cfg.entityTypeId}/details/${x.id}/`);
+    return c;
   }
+}
+
+function colorByStage(name){
+  for(const r of RULES){ if(r.key.test(name)) return r.color; }
+  return FALLBACK_COLOR;
+}
+
+// ---------- REST/CFG/UTIL ----------
+async function loadCfg(){
+  try{ const d = await api('app.option.get',{options:[APP_OPT]}); return JSON.parse(d[APP_OPT]||'{}'); }
+  catch(e){ return {}; }
+}
+async function setCfg(cfg){ await api('app.option.set',{options:{[APP_OPT]:JSON.stringify(cfg)}}); }
+async function loadAll(entityTypeId, select){
+  let start=0,out=[];
+  do{
+    const d = await api('crm.item.list',{entityTypeId, select, start, order:{id:'asc'}});
+    const part = d.items || d || [];
+    out = out.concat(part); start = d.next || 0;
+  } while(start>0);
+  return out;
+}
+function api(method, params){
+  return new Promise((res,rej)=>BX24.callMethod(method, params, r=>r.error()?rej(r.error()):res(r.data())));
+}
+function el(tag, attrs, children){
+  const n=document.createElement(tag);
+  if(attrs) Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v));
+  (Array.isArray(children)?children:[children]).forEach(c=>n.appendChild(typeof c==='string'?document.createTextNode(c):c));
+  return n;
+}
+function opt(v,t){ const o=document.createElement('option'); o.value=v; o.textContent=t; return o; }
 </script>
 </body>
 </html>
